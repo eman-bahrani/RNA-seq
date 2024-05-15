@@ -1,0 +1,493 @@
+---
+title: "another method lessgoo"
+output: html_document
+date: "2023-12-30"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+load data 
+
+```{r}
+# Load libraries
+library('edgeR')
+library('ggplot2')
+library('viridis')
+library('VennDiagram')
+
+# Read dataset
+dataset <- read.csv('C:/Users/emani/OneDrive/Desktop/New folder/GSE147507_RawReadCounts_Human.tsv/GSE147507_RawReadCounts_Human.tsv', sep='\t', header=TRUE, row.names=1)
+
+
+# Select relevant columns
+dataset <- dataset[, c(
+  'Series1_NHBE_Mock_1', 'Series1_NHBE_Mock_2', 'Series1_NHBE_Mock_3',
+  'Series1_NHBE_SARS.CoV.2_1', 'Series1_NHBE_SARS.CoV.2_2', 'Series1_NHBE_SARS.CoV.2_3',
+  'Series2_A549_Mock_1', 'Series2_A549_Mock_2', 'Series2_A549_Mock_3', 'Series2_A549_SARS.CoV.2_1',
+  'Series2_A549_SARS.CoV.2_2', 'Series2_A549_SARS.CoV.2_3', 'Series6_A549.ACE2_Mock_1',
+  'Series6_A549.ACE2_Mock_2', 'Series6_A549.ACE2_Mock_3', 'Series6_A549.ACE2_SARS.CoV.2_1',
+  'Series6_A549.ACE2_SARS.CoV.2_2', 'Series6_A549.ACE2_SARS.CoV.2_3', 'Series7_Calu3_Mock_1',
+  'Series7_Calu3_Mock_2', 'Series7_Calu3_Mock_3', 'Series7_Calu3_SARS.CoV.2_1',
+  'Series7_Calu3_SARS.CoV.2_2', 'Series7_Calu3_SARS.CoV.2_3', 'Series15_HealthyLungBiopsy_2',
+  'Series15_HealthyLungBiopsy_1', 'Series15_COVID19Lung_2', 'Series15_COVID19Lung_1'
+)]
+````
+
+section 1
+
+figure 1
+```{r}
+# section 1
+# Plot area
+par(mar = c(10, 4, 2, 2) + 3)
+
+# Barplot
+# Get number of samples 
+num_samples <- ncol(dataset)
+
+# Define viridis color palette
+my_colors <- viridis(num_samples) 
+
+# Bar plot
+barplot(colSums(dataset), 
+        main='Reads Per Sample',
+        xlab='Sample', 
+        ylab='Number of Reads',
+        names.arg=colnames(dataset),
+        cex.names=0.8,
+        col=my_colors)
+
+```
+
+section 2
+
+figure 2
+
+```{r}
+# Section 2
+
+# Make the DGEList
+dge <- DGEList(counts = dataset)
+
+# Define groups
+groups <- factor(c(
+  rep("Mock", 3), rep("SARS-CoV-2", 3),
+  rep("Mock", 3), rep("SARS-CoV-2", 3),
+  rep("Mock", 3), rep("SARS-CoV-2", 3),
+  rep("Mock", 3), rep("SARS-CoV-2", 3),
+  rep("Healthy", 2), rep("COVID-19", 2)
+))
+
+# Assign groups to the samples
+dge$samples$group <- groups
+
+# Check the structure of the DGEList object
+print(dge)
+
+# Perform normalization using TMM
+dge1 <- calcNormFactors(dge, method = "TMM")
+print(dge1)
+
+# Perform normalization using RLE
+dge2 <- calcNormFactors(dge, method = "RLE")
+print(dge2)
+
+# Perform normalization using upper quartile
+dge3 <- calcNormFactors(dge, method = "upperquartile")
+print(dge3)
+
+# Perform PCA 
+pca_result <- prcomp(t(dge1$counts))
+
+# Create PCA data frame
+pca_df <- as.data.frame(pca_result$x)
+
+# Get sample names 
+sample_names <- colnames(dge1$counts)
+
+# Add sample names column
+pca_df$SampleID <- sample_names  
+
+# Number of samples 
+num_samples <- length(sample_names)
+
+# Define colors 
+my_colors <- viridis(n = num_samples)
+
+# Colors data frame
+color_df <- data.frame(SampleID = sample_names, 
+                       Color = my_colors)
+
+# Merge the data frames
+merged_df <- merge(pca_df, color_df, by ="SampleID")
+
+# Define color palette 
+my_colors <- viridis(n = length(unique(merged_df$SampleID)))
+
+# PCA plot
+ggplot(merged_df, aes(x = PC1, y = PC2, color = SampleID)) +
+  geom_point(size = 3) +
+  scale_color_manual(values = merged_df$Color) +
+  labs(title = "PCA Plot")
+```
+
+
+# section 3
+
+# figure 3
+
+chatgpt help
+
+```{r}
+
+#section 3
+# Specify the sample names
+nhbe_samples <- c(
+  'Series1_NHBE_Mock_1', 'Series1_NHBE_Mock_2', 'Series1_NHBE_Mock_3',
+  'Series1_NHBE_SARS.CoV.2_1', 'Series1_NHBE_SARS.CoV.2_2', 'Series1_NHBE_SARS.CoV.2_3'
+)
+
+# Subset the dataset based on sample names
+nhbe_dataset <- dataset[, nhbe_samples]
+
+# Create DGEList object
+dge <- DGEList(counts = nhbe_dataset)
+
+# Define groups
+groups <- factor(c(rep("Mock", 3), rep("SARS-CoV-2", 3)))
+
+# Assign groups to the samples
+dge$samples$group <- groups
+
+# Function to perform differential expression analysis
+perform_dge_analysis <- function(dge, method) {
+  # Normalize
+  dge_norm <- calcNormFactors(dge, method = method)
+
+  # Design matrix
+  design <- model.matrix(~ group, data = dge_norm$samples)
+
+  # Estimate dispersions
+  dge_norm <- estimateDisp(dge_norm, design)
+
+  # Exact test for differential expression
+  et <- exactTest(dge_norm, pair=c("Mock", "SARS-CoV-2"))
+
+  # Get table of differentially expressed genes
+  de_genes <- topTags(et, n=Inf)$table
+
+  # Filter based on adjusted P-value and logFC
+  de_genes_filtered <- de_genes[de_genes$FDR <= 0.05 & de_genes$logFC > 0, ]
+  return(rownames(de_genes_filtered))
+}
+
+
+# Perform differential expression analysis for each normalization method
+de_genes_tmm <- perform_dge_analysis(dge, "TMM")
+de_genes_rle <- perform_dge_analysis(dge, "RLE")
+de_genes_uq <- perform_dge_analysis(dge, "upperquartile")
+
+# Generate a viridis color palette for the Venn diagram
+venn_colors <- viridis(3)  # One color for each category
+
+# Venn Diagram with adjusted coloring approach
+venn.plot <- venn.diagram(
+  x = list(
+    TMM = de_genes_tmm,
+    RLE = de_genes_rle,
+    UQ = de_genes_uq
+  ),
+  category.names = c("TMM", "RLE", "UQ"),
+  filename = "venn_colored_logfc.png",  # Set filename to NULL for plotting on R console
+  output = TRUE,
+  col = "transparent",  # Set border color to transparent
+  fill = c(venn_colors[1], venn_colors[2], venn_colors[3]),  # Set fill color for each category
+  alpha = 0.5  # Adjust transparency as needed,
+)
+
+
+```
+```{r}
+
+
+#section 3
+# Specify the sample names
+nhbe_samples <- c(
+  'Series1_NHBE_Mock_1', 'Series1_NHBE_Mock_2', 'Series1_NHBE_Mock_3',
+  'Series1_NHBE_SARS.CoV.2_1', 'Series1_NHBE_SARS.CoV.2_2', 'Series1_NHBE_SARS.CoV.2_3'
+)
+
+# Subset the dataset based on sample names
+nhbe_dataset <- dataset[, nhbe_samples]
+
+# Create DGEList object
+dge <- DGEList(counts = nhbe_dataset)
+
+# Define groups
+groups <- factor(c(rep("Mock", 3), rep("SARS-CoV-2", 3)))
+
+# Assign groups to the samples
+dge$samples$group <- groups
+
+# Function to perform differential expression analysis
+perform_dge_analysis <- function(dge, method) {
+  # Normalize
+  dge_norm <- calcNormFactors(dge, method = method)
+
+  # Design matrix
+  design <- model.matrix(~ group, data = dge_norm$samples)
+
+  # Estimate dispersions
+  dge_norm <- estimateDisp(dge_norm, design)
+
+  # Exact test for differential expression
+  et <- exactTest(dge_norm, pair=c("Mock", "SARS-CoV-2"))
+
+  # Get table of differentially expressed genes
+  de_genes <- topTags(et, n=Inf)$table
+
+  # Filter based on adjusted P-value and logFC
+  de_genes_filtered <- de_genes[de_genes$PValue <= 0.05 & de_genes$logFC > 0, ]
+  return(rownames(de_genes_filtered))
+}
+
+
+# Perform differential expression analysis for each normalization method
+de_genes_tmm <- perform_dge_analysis(dge, "TMM")
+de_genes_rle <- perform_dge_analysis(dge, "RLE")
+de_genes_uq <- perform_dge_analysis(dge, "upperquartile")
+
+# Generate a viridis color palette for the Venn diagram
+venn_colors <- viridis(3)  # One color for each category
+
+# Venn Diagram with adjusted coloring approach
+venn.plot <- venn.diagram(
+  x = list(
+    TMM = de_genes_tmm,
+    RLE = de_genes_rle,
+    UQ = de_genes_uq
+  ),
+  category.names = c("TMM", "RLE", "UQ"),
+  filename = "not_FDR.png",  # Set filename to NULL for plotting on R console
+  output = TRUE,
+  col = "transparent",  # Set border color to transparent
+  fill = c(venn_colors[1], venn_colors[2], venn_colors[3]),  # Set fill color for each category
+  alpha = 0.5  # Adjust transparency as needed,
+)
+
+
+
+```
+
+
+
+with p value sorting in toptags
+
+```{r}
+
+
+#section 3
+# Specify the sample names
+nhbe_samples <- c(
+  'Series1_NHBE_Mock_1', 'Series1_NHBE_Mock_2', 'Series1_NHBE_Mock_3',
+  'Series1_NHBE_SARS.CoV.2_1', 'Series1_NHBE_SARS.CoV.2_2', 'Series1_NHBE_SARS.CoV.2_3'
+)
+
+# Subset the dataset based on sample names
+nhbe_dataset <- dataset[, nhbe_samples]
+
+# Create DGEList object
+dge <- DGEList(counts = nhbe_dataset)
+
+# Define groups
+groups <- factor(c(rep("Mock", 3), rep("SARS-CoV-2", 3)))
+
+# Assign groups to the samples
+dge$samples$group <- groups
+
+# Function to perform differential expression analysis
+perform_dge_analysis <- function(dge, method) {
+  # Normalize
+  dge_norm <- calcNormFactors(dge, method = method)
+
+  # Design matrix
+  design <- model.matrix(~ group, data = dge_norm$samples)
+
+  # Estimate dispersions
+  dge_norm <- estimateDisp(dge_norm, design)
+
+  # Exact test for differential expression
+  et <- exactTest(dge_norm, pair=c("Mock", "SARS-CoV-2"))
+
+  # Get table of differentially expressed genes
+  de_genes <- topTags(et, n=Inf, sort.by = "PValue", p.value = 0.05)$table
+
+  # Filter based on adjusted P-value and logFC
+  de_genes_filtered <- de_genes[de_genes$PValue <= 0.05 & de_genes$logFC > 0, ]
+  return(rownames(de_genes_filtered))
+}
+
+
+# Perform differential expression analysis for each normalization method
+de_genes_tmm <- perform_dge_analysis(dge, "TMM")
+de_genes_rle <- perform_dge_analysis(dge, "RLE")
+de_genes_uq <- perform_dge_analysis(dge, "upperquartile")
+
+# Generate a viridis color palette for the Venn diagram
+venn_colors <- viridis(3)  # One color for each category
+
+# Venn Diagram with adjusted coloring approach
+venn.plot <- venn.diagram(
+  x = list(
+    TMM = de_genes_tmm,
+    RLE = de_genes_rle,
+    UQ = de_genes_uq
+  ),
+  category.names = c("TMM", "RLE", "UQ"),
+  filename = "p_in_toptags.png",  # Set filename to NULL for plotting on R console
+  output = TRUE,
+  col = "transparent",  # Set border color to transparent
+  fill = c(venn_colors[1], venn_colors[2], venn_colors[3]),  # Set fill color for each category
+  alpha = 0.5  # Adjust transparency as needed,
+)
+
+
+
+```
+
+
+
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("DESeq2")a
+```
+
+
+
+figure 4
+
+```{r}
+
+# Load libraries
+library(edgeR)
+install.packages("DESeq2")
+library(DESeq2)
+library(limma)
+library(viridis)
+library(VennDiagram)
+
+# EdgeR analysis
+group <- factor(group)
+dge <- DGEList(counts = nhbe_dataset, group = group)
+dge <- calcNormFactors(dge)  # TMM normalization
+design <- model.matrix(~ group)
+dge <- estimateDisp(dge, design)
+fit <- glmQLFit(dge, design)
+qlf <- glmQLFTest(fit, coef = 2)
+edgeR_res <- topTags(qlf, n=Inf)
+edgeR_sig_genes <- rownames(edgeR_res$table[edgeR_res$table$FDR < 0.05 & abs(edgeR_res$table$logFC) > 1, ])
+
+# DESeq2 analysis
+dds <- DESeqDataSetFromMatrix(countData = nhbe_dataset, colData = data.frame(group), design = ~ group)
+dds <- DESeq(dds)
+res <- results(dds)
+res_sig_genes <- rownames(res[which(res$padj < 0.05 & abs(res$log2FoldChange) > 1), ])
+
+# Limma-Voom analysis
+v <- voom(nhbe_dataset, design, plot=FALSE)
+fit <- lmFit(v, design)
+fit <- eBayes(fit)
+limma_res <- topTable(fit, coef=2, number=nrow(nhbe_dataset))
+limma_sig_genes <- rownames(limma_res[limma_res$adj.P.Val < 0.05 & abs(limma_res$logFC) > 1, ])
+
+# Venn Diagram
+venn_data <- list(
+  edgeR=edgeR_sig_genes,
+  DESeq2=res_sig_genes,
+  Limma=limma_sig_genes
+)
+venn.plot <- venn.diagram(
+  x = venn_data,
+  category.names = c("edgeR", "DESeq2", "Limma"),
+  filename = "libraries.png",
+  output = TRUE,
+  col = "transparent",
+  fill = viridis(3),
+  alpha = 0.5
+)
+
+```
+
+with p value not FDR
+
+
+```{r}
+
+# Load libraries
+library(edgeR)
+install.packages("DESeq2")
+library(DESeq2)
+library(limma)
+library(viridis)
+library(VennDiagram)
+
+# EdgeR analysis
+group <- factor(group)
+dge <- DGEList(counts = nhbe_dataset, group = group)
+dge <- calcNormFactors(dge)  # TMM normalization
+design <- model.matrix(~ group)
+dge <- estimateDisp(dge, design)
+fit <- glmQLFit(dge, design)
+qlf <- glmQLFTest(fit, coef = 2)
+edgeR_res <- topTags(qlf, n=Inf)
+edgeR_sig_genes <- rownames(edgeR_res$table[edgeR_res$table$PValue < 0.05 & abs(edgeR_res$table$logFC) > 1, ])
+
+# DESeq2 analysis
+dds <- DESeqDataSetFromMatrix(countData = nhbe_dataset, colData = data.frame(group), design = ~ group)
+dds <- DESeq(dds)
+res <- results(dds)
+res_sig_genes <- rownames(res[which(res$padj < 0.05 & abs(res$log2FoldChange) > 1), ])
+
+# Limma-Voom analysis
+v <- voom(nhbe_dataset, design, plot=FALSE)
+fit <- lmFit(v, design)
+fit <- eBayes(fit)
+limma_res <- topTable(fit, coef=2, number=nrow(nhbe_dataset))
+limma_sig_genes <- rownames(limma_res[limma_res$adj.P.Val < 0.05 & abs(limma_res$logFC) > 1, ])
+
+# Venn Diagram
+venn_data <- list(
+  edgeR=edgeR_sig_genes,
+  DESeq2=res_sig_genes,
+  Limma=limma_sig_genes
+)
+venn.plot <- venn.diagram(
+  x = venn_data,
+  category.names = c("edgeR", "DESeq2", "Limma"),
+  filename = "libraries.png",
+  output = TRUE,
+  col = "transparent",
+  fill = viridis(3),
+  alpha = 0.5
+)
+
+
+```
+
+
+section 4
+
+figure 5
+
+```{r}
+
+print(edgeR_sig_genes)
+
+
+
+```
+
